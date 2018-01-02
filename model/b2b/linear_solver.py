@@ -208,8 +208,8 @@ class Linear_Solver_logit(LinearSolver):
 
         total_samples = X_uv.shape[0]
         d_dim = X_uv.shape[1]
-        self.W = sp.csr_matrix(np.array([0.] * d_dim).reshape(d_dim, 1))
-        B=self.getB()
+        self.W = np.mat(np.array([0.] * d_dim).reshape(d_dim, 1))
+        B = self.getB(self.p_data, self.n_data)
 
 
         total_batches = int(math.ceil((1. * total_samples) / batch_size))
@@ -227,13 +227,15 @@ class Linear_Solver_logit(LinearSolver):
                 # batch_B is csr_matrix,(n,dim)
                 batch_B = self.getB(batch_uv, batch_uf)
                 batch_lambda = self.getPAI(X_uv=batch_uv, X_uf=batch_uf, Z=Z)
-                # batch_A is csr_matrix,(1,n)
-                batch_L = np.exp(-safe_sparse_dot(B, W).todense())
-                batch_F = 1+1/(batch_lambda*batch_L)
+
+                batch_L = np.exp(-safe_sparse_dot(batch_B, self.W))
+                batch_L = np.ravel(batch_L)
+                batch_F = 1 + 1 / batch_lambda * batch_L
+
                 assert batch_F.shape == batch_L.shape
                 batch_F_1 = 1./batch_F
 
-                self.W = self.W  - eta * (-safe_sparse_dot(batch_B.T,batch_F_1 ) + a_1 * self.W)
+                self.W = self.W - eta * (-safe_sparse_dot(batch_B.T, batch_F_1.reshape([-1, 1])) + a_1 * self.W)
 
                 batch_count += 1
                 p_start = p_end

@@ -338,7 +338,7 @@ class Totally_Corr_with_linear(Totally_Corr):
 
             if iter!=0 and iter%2 == 0:
                 Z=self.getZ()
-                auc = predic_auc(np.zeros(Z.shape[0]), Z)
+                auc = predic_auc(self.linear_weight, Z)
                 print "auc:", auc
 
             print 'len(W)={0}'.format(len(self.mat_weight_list))

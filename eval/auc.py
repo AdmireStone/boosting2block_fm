@@ -34,8 +34,8 @@ def predict_b2b(W, Z, u, items,item_one_hot_dim,user_one_hot_dim):
 
 def getSingleContextAUC(s_c_ob, s_c_non_ob):
     acc = 0.0
+    s_c_non_ob = np.ravel(s_c_non_ob)
     s_c_ob = np.ravel(s_c_ob)
-    s_c_non_ob = np.ravel(s_c_ob)
     for s_ci in s_c_ob:
         acc += np.sum(s_c_non_ob < s_ci)
     return acc / (len(s_c_ob) * len(s_c_non_ob))

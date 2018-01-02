@@ -80,7 +80,7 @@ class Algorithm(object):
 
             linear_weight = ls.fit()
 
-            qs = Totally_Corr_with_linear(self.maxiters,self.reg_V,self.w_eta,self.w_epoc,self.X_ci,self.X_cj,
+            qs = Totally_Corr_with_linear(self.maxiters_2,self.reg_V,self.w_eta,self.w_epoc,self.X_ci,self.X_cj,
                                           self.batch_size_2,linear_weight)
             qs.fit()
 
