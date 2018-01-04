@@ -169,8 +169,6 @@ def train(boosting_iters,X_uv,X_uf,linear_epoc,batch_size,eta,a_1,a_3,lambda_eps
     # if not os.path.exists(modelPath)and save_model:
     #     os.makedirs(modelPath)
 
-   
-    old_ele_quadratic_loss=[1]*context_num
     lambda_list=[]
     for iter_count in range(boosting_iters):
         print '##############################boosting_iter:',iter_count,'#########################'

@@ -320,11 +320,10 @@ class Totally_Corr(Quadratic_Solver):
             if isverbose:
                 print '耗时={0}'.format(time.time() - time_u)
 
-            # if iter!=0 and iter%2 == 0:
-            #     # Z=self.getZ()
-            #     print 'predicting auc....'
-            #     auc = predic_auc_with_eigenvec(self.linear_weight, quadratic_solver=self)
-            #     print "auc:", auc
+            if iter!=0 and iter%10 == 0:
+                print 'predicting auc....'
+                auc = predic_auc_with_eigenvec(self.linear_weight, quadratic_solver=self)
+                print "auc:", auc
 
             if isverbose:
                 print 'len(W)={0}'.format(len(self.mat_weight_list))

@@ -11,6 +11,7 @@ import scipy.sparse as sp
 from sklearn.utils.extmath import safe_sparse_dot
 from sklearn.metrics import roc_auc_score
 import time
+from sklearn.metrics.pairwise import check_paired_arrays,polynomial_kernel
 
 
 def predict_b2b(W, Z, u, items,item_one_hot_dim,user_one_hot_dim):
@@ -30,6 +31,31 @@ def predict_b2b(W, Z, u, items,item_one_hot_dim,user_one_hot_dim):
 
     return np.asarray(linear_term + qusdratic_term)
     # return np.asarray(linear_term + qusdratic_term)[0]
+
+
+
+def predict_b2b_with_quadratic_sover(W,quadratic_solver, u, items,item_one_hot_dim,user_one_hot_dim):
+    #     print type(items)
+    items_onehot = sp.identity(item_one_hot_dim, dtype='f', format='csr')[list(items)]
+    items_num = len(items)
+
+    u_max = np.array([0.] * user_one_hot_dim * items_num).reshape(items_num, user_one_hot_dim)
+    u_max[:, u] = 1.
+    u_max = sp.csr_matrix(u_max)
+
+    eval_data = sp.hstack([u_max, items_onehot])
+
+    linear_term = safe_sparse_dot(eval_data, W).T
+
+    linear_term = linear_term.ravel()
+
+    lams = quadratic_solver.mat_weight_list
+    lams = np.array(lams)
+    P = quadratic_solver.eigenvec_list
+    K = polynomial_kernel(eval_data, np.array(P), degree=2, gamma=1, coef0=0)
+
+    quadratic_term = (np.dot(K, lams.T)).ravel()
+    return quadratic_term+linear_term
 
 
 def getSingleContextAUC(s_c_ob, s_c_non_ob):
@@ -78,15 +104,15 @@ def load_test_required_data_jester2():
 
 def predic_auc(W, Z):
 
-    # users_unique, data, train_data, items_set = load_test_required_data()
-    users_unique, data, train_data, items_set = load_test_required_data_jester2()
+    users_unique, data, train_data, items_set = load_test_required_data()
+    # users_unique, data, train_data, items_set = load_test_required_data_jester2()
     totoal_auc = 0.0
     count = 0
     context_num = len(users_unique)
 
-    # 临时强行转换，只适合与jester-2
-    item_one_hot_dim = 146
-    user_one_hot_dim = len(users_unique)
+    # 临时强行转换，
+    item_one_hot_dim = 1522
+    user_one_hot_dim = 943
     # file_name="/home/zju/dgl/dataset/recommend/ml-100k/12_20_22_44/u1_iter_59_save_weight.pkl"
     # W,Z=loadB2bModel(weight_file)
     for u in users_unique:
@@ -100,6 +126,35 @@ def predic_auc(W, Z):
         totoal_auc += acc
         count += 1
     return totoal_auc / context_num
+
+def predic_auc_with_eigenvec(W, quadratic_solver):
+
+    users_unique, data, train_data, items_set = load_test_required_data()
+    # users_unique, data, train_data, items_set = load_test_required_data_jester2()
+    totoal_auc = 0.0
+    count = 0
+    context_num = len(users_unique)
+
+    # 临时强行转换，
+    item_one_hot_dim = 1522
+    user_one_hot_dim = 943
+    # file_name="/home/zju/dgl/dataset/recommend/ml-100k/12_20_22_44/u1_iter_59_save_weight.pkl"
+    # W,Z=loadB2bModel(weight_file)
+    for u in users_unique:
+        positive = set(data[u].indices)
+        # 获取当前用户在训练数据集中的正标签
+        train_pos = set(train_data[u].indices)
+        neg = items_set - train_pos - positive
+        s_c_ob = predict_b2b_with_quadratic_sover(W, quadratic_solver, u, positive,item_one_hot_dim,user_one_hot_dim)
+        s_c_non_ob = predict_b2b_with_quadratic_sover(W, quadratic_solver, u, neg,item_one_hot_dim,user_one_hot_dim)
+        acc = getSingleContextAUC(s_c_ob, s_c_non_ob)
+        totoal_auc += acc
+        count += 1
+    return totoal_auc / context_num
+
+
+
+
 
 
 def predict_b2b_full_auc(W, Z, u, items):

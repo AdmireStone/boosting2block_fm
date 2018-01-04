@@ -33,6 +33,7 @@ class LinearSolver(object):
         self.linear_reg_para = linear_reg_para
         self.l_rate = l_rate
 
+    # def calutlate_quadratic_
                 
     def getPAI(self,X_uv,X_uf,Z):
         '''
@@ -106,7 +107,6 @@ class LinearSolver(object):
         loss_term=np.log(np.sum((batch_A/(beta)).data))
         return loss_term+regular_term
 
-
     def updateW(self,X_uv, X_uf, epoc, Z, batch_size, a_1, eta):
         '''
         更新线性项，更新方法，梯度下降：
@@ -126,6 +126,8 @@ class LinearSolver(object):
         #print 'eta 蛋疼126',type(eta)
         ## 统计loss
         final_loss = 0.
+
+
 
         total_samples = X_uv.shape[0]
         d_dim = X_uv.shape[1]
@@ -178,14 +180,14 @@ class LinearSolver(object):
 
     def fit(self):
         linear_weight=self.updateW(batch_size=self.batch_size,epoc=self.epoc,X_uv=self.p_data,X_uf=self.n_data,
-                       Z=self.quadratic_term,a_1=self.linear_reg_para,eta=self.l_rate)
+                       a_1=self.linear_reg_para,eta=self.l_rate)
         return linear_weight
 ###########################Linear term update#####################################
 
 
 class Linear_Solver_logit(LinearSolver):
 
-    def __init__(self,batch_size,epoc,p_data,n_data,quadratic_term,linear_reg_para,l_rate):
+    def __init__(self,batch_size,epoc,p_data,n_data,quadratic_predicts,linear_reg_para,l_rate):
         '''
         :param batch_size: 每个批度的大小
         :param epoc: 迭代的周期
@@ -199,18 +201,19 @@ class Linear_Solver_logit(LinearSolver):
         self.epoc = epoc
         self.p_data = p_data
         self.n_data = n_data
-        self.quadratic_term = quadratic_term
+        self.quadratic_predicts = quadratic_predicts
         self.linear_reg_para = linear_reg_para
         self.l_rate = l_rate
 
 
-    def updateW(self,X_uv, X_uf, epoc, Z, batch_size, a_1, eta):
+    def updateW(self,X_uv, X_uf, epoc,batch_size, a_1, eta):
 
         total_samples = X_uv.shape[0]
         d_dim = X_uv.shape[1]
-        self.W = np.mat(np.array([0.] * d_dim).reshape(d_dim, 1))
+        self.W = np.array([0.] * d_dim)
         B = self.getB(self.p_data, self.n_data)
 
+        quadratic_exp = np.exp(self.quadratic_predicts)
 
         total_batches = int(math.ceil((1. * total_samples) / batch_size))
         for ep in range(epoc):
@@ -224,21 +227,22 @@ class Linear_Solver_logit(LinearSolver):
                 # print 'p_start:',p_start,'p_end:',p_end
                 batch_uv = X_uv[p_start:p_end]
                 batch_uf = X_uf[p_start:p_end]
+
+                batch_quadratic_exp = quadratic_exp[p_start:p_end]
+
                 # batch_B is csr_matrix,(n,dim)
-                batch_B = self.getB(batch_uv, batch_uf)
-                batch_lambda = self.getPAI(X_uv=batch_uv, X_uf=batch_uf, Z=Z)
+                batch_sum = self.getB(batch_uv, batch_uf)
 
-                batch_L = np.exp(-safe_sparse_dot(batch_B, self.W))
-                batch_L = np.ravel(batch_L)
-                batch_F = 1 + 1 / batch_lambda * batch_L
+                temp = safe_sparse_dot(batch_sum, self.W.T)
+                temp = temp.ravel()
 
-                assert batch_F.shape == batch_L.shape
-                batch_F_1 = 1./batch_F
+                batch_A = (-1. / (1. + batch_quadratic_exp *np.exp(-temp)))
 
-                self.W = self.W - eta * (-safe_sparse_dot(batch_B.T, batch_F_1.reshape([-1, 1])) + a_1 * self.W)
+                self.W = self.W - eta * (-safe_sparse_dot(batch_A.T, batch_sum) + a_1 * self.W)
 
                 batch_count += 1
                 p_start = p_end
                 p_end = p_end + batch_size
                 eta = 0.9 * eta
+                # print 'linear batch_count={0}'.format(batch_count)
         return self.W
