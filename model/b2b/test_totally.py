@@ -25,22 +25,25 @@ class Algorithm(object):
     def set_args(self):
 
         # 两区块，迭代次数
-        self.total_iters = 20
+        self.total_iters = 1
 
         # 控制二次项迭代次数，基模型的个数
-        self.maxiters_2 = 100
+        self.maxiters_2 = 5
 
-        self.reg_V = 0.001
-        self.reg_linear = 0.001
+        self.reg_V = 10
+        self.reg_linear = 0.002
 
         self.w_eta = 0.01
         self.w_epoc = 20
-        self.batch_size_2 = 100 #求二次项权重
+        self.batch_size_2 = 100 #求二次项权重时候，SGD要用
 
         self.batch_size_linear = 100 # 线性项
         self.linear_eat = 0.01
         self.linear_epoc = 10
 
+    def reset_quadratic_args(self,reg_v,componets):
+        self.reg_V = reg_v
+        self.maxiters_2 = componets
 
     def load_data_file(self,train_data_file):
         '''
@@ -66,34 +69,105 @@ class Algorithm(object):
         qs.fit()
         return qs.getZ()
 
+    def predict(self,linear_weight,quadratic_solver_instance):
+
+        sub = self.X_ci - self.X_cj
+
+        linear_term = safe_sparse_dot(sub, linear_weight)
+
+        linear_term = np.ravel(linear_term)
+
+        # quadratic_term = quadratic_solver_instance.getHj(Z, self.X_ci, self.X_cj)
+
+        quadratic_term = quadratic_solver_instance.predict_quadratic(self.X_ci,self.X_cj)
+
+        # print 'predict:linear_term.shape',linear_term.shape
+        # print 'predict:quadratic_term.shape', quadratic_term.shape
+        assert linear_term.shape == quadratic_term.shape
+
+        predicts = linear_term + quadratic_term
+
+        return predicts
+
+    def loss(self,linear_weight,Z,element_z_weitghts,quadratic_solver_instance):
+        '''
+
+        :param linear_weight:  列向量 [n,1]
+        :param Z: 合成的Z,e.q. sum(w_jz_j)
+        :param element_z_weitghts: list
+        :return:
+        '''
+        regular = 0.5*self.reg_linear*np.dot(linear_weight.T,linear_weight) + self.reg_V*np.sum(element_z_weitghts)
+
+        predicts = self.predict(linear_weight,quadratic_solver_instance)
+
+        ## objective function loss
+
+        a = 1+np.exp(-predicts)
+        b = np.log(a)
+        loss = np.sum(b)+regular
+
+        return  loss
+
+
+    def loss_simple(self,linear_weight,Z,element_z_weitghts,quadratic_solver_instance):
+        '''
+
+        :param linear_weight:  列向量 [n,1]
+        :param Z: 合成的Z,e.q. sum(w_jz_j)
+        :param element_z_weitghts: list
+        :return:
+        '''
+        regular = 0.5*self.reg_linear*np.dot(linear_weight.T,linear_weight) + self.reg_V*np.sum(element_z_weitghts)
+
+        predicts = self.predict(linear_weight,quadratic_solver_instance)
+        # print np.sum(predicts > 0.)
+        return  np.sum(predicts>0.)*1./len(predicts)
+
 
     def two_block_algortihm(self):
         '''
         :return:
         '''
         # exp(-Rou)
-        quadratic_term = 1.
+        Z = np.zeros((self.X_cj.shape[1],self.X_cj.shape[1]))
         for iter in range(self.total_iters):
 
-            ls = Linear_Solver_logit(self.batch_size_linear,self.linear_epoc,
-                                 self.X_ci,self.X_cj,quadratic_term,self.linear_epoc,self.linear_epoc)
+            # ls = Linear_Solver_logit(self.batch_size_linear,self.linear_epoc,
+            #                      self.X_ci,self.X_cj,quadratic_term,self.linear_epoc,self.linear_epoc)
 
-            linear_weight = ls.fit()
+            ls = Linear_Solver_logit(self.batch_size_linear, self.linear_epoc, self.X_ci,
+                                     self.X_cj, Z, self.reg_linear, self.linear_eat)
 
-            qs = Totally_Corr_with_linear(self.maxiters_2,self.reg_V,self.w_eta,self.w_epoc,self.X_ci,self.X_cj,
-                                          self.batch_size_2,linear_weight)
+            # linear_weight = ls.fit()
+
+            linear_weight = np.zeros(self.X_cj.shape[1])
+            qs = Totally_Corr(self.maxiters_2,self.reg_V,self.w_eta,self.w_epoc,self.X_ci,self.X_cj,
+                                          self.batch_size_2,linear_weight.ravel())
             qs.fit()
 
-            return (linear_weight,qs.getZ())
+            # Z = qs.getZ()
+            print 'loss={0}'.format(self.loss_simple(linear_weight,Z,qs.mat_weight_list,qs))
+
+        # return (linear_weight,Z)
 
 
 if __name__=='__main__':
 
 
-    alg=Algorithm('from_synthetic_data_csv.pkl')
-    alg.set_args()
+
     # alg.only_qudratic()
-    alg.two_block_algortihm()
+    # [100,50,10,5,1,0.1,0.01]
+    for reg_v in [0.006,0.003,0.001,0.0006,0.0003,0.0001]:
+        cmp_args_list = [2, 4, 6, 8, 10, 15, 20, 25, 30, 35, 40, 50, 60, 70, 80]
+        cmp_args_list.reverse()
+        for componets in cmp_args_list:
+            print '********************reg_v={0},rank={1}**************'.format(reg_v,componets)
+            alg = Algorithm('from_synthetic_data_csv.pkl')
+            alg.set_args()
+            alg.reset_quadratic_args(reg_v,componets)
+            alg.two_block_algortihm()
+
 
 
     # def load_data_file(train_data_file):

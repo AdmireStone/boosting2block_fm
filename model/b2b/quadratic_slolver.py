@@ -59,10 +59,10 @@ class Quadratic_Solver(object):
         :return: exp(-W^TX)
         '''
         W = np.array(self.linear_weight)
-        X_ci, W = check_paired_arrays(self.X_cj, W)
+        # X_ci, W = check_paired_arrays(self.X_cj, W)
         self.l_exp_loss = np.exp(-safe_sparse_dot(self.X_ci - self.X_cj, W.T, dense_output=True))
         self.l_exp_loss = self.l_exp_loss.ravel()
-        print 'self.l_exp_loss:', type(self.l_exp_loss), self.l_exp_loss.shape
+        # print 'self.l_exp_loss:', type(self.l_exp_loss), self.l_exp_loss.shape
 
     def calutlate_redidual_matrix(self):
         '''
@@ -245,7 +245,7 @@ class Totally_Corr(Quadratic_Solver):
                 deta = np.dot(temp_A,-batch_psi)
                 deta = deta.ravel()
                 deta = deta/(batch_P.shape[0])
-                assert len(deta) == len(self.mat_weight_lis)
+                assert len(deta) == len(self.mat_weight_list)
                 self.mat_weight_list -= self.eta*(deta+self.reg_v)
 
                 p_start = p_end
@@ -269,17 +269,24 @@ class Totally_Corr(Quadratic_Solver):
             # j+=1
         return Z
 
-    def fit(self):
-
+    def fit(self,isverbose=False):
+        self.calutlate_linear_exp_loss()
         for iter in range(self.maxiters):
             # 注意这里的sample_weight 每次要不要放大，第一次必须放大
             start=time.time()
-            print '####iter-{0}######'.format(iter)
+
+            if isverbose:
+                print '####iter-{0}######'.format(iter)
+
             self.current_j = iter+1
 
-            print '####特征分解.....######'
+            if isverbose:
+                print '####特征分解.....######'
             eigenvec, eigenval = self.getComponentZ_eigval(self.sample_weight,self.X_ci,self.X_cj)
-            print 'eigenval={0}'.format(eigenval)
+
+            if isverbose:
+                print 'eigenval={0}'.format(eigenval)
+
             if eigenval < self.reg_v:
                 Z=self.getZ()
                 auc = predic_auc(np.zeros(Z.shape[0]), Z)
@@ -289,10 +296,13 @@ class Totally_Corr(Quadratic_Solver):
             self.mat_weight_list.append(0.)
             self.eigenvec_list.append(eigenvec)
 
-            print '####更新模型权重.....######'
+            if isverbose:
+                print '####更新模型权重.....######'
             time_u=time.time()
             self.update_mat_weight()
-            print '耗时={0}'.format(time.time()-time_u)
+
+            if isverbose:
+                print '耗时={0}'.format(time.time()-time_u)
 
 
             eigenvec_list = [p for p, lam in zip(self.eigenvec_list, self.mat_weight_list) if np.abs(lam) > 0]
@@ -301,19 +311,25 @@ class Totally_Corr(Quadratic_Solver):
             self.eigenvec_list = eigenvec_list
             self.mat_weight_list = lams
 
-            print '####更新样本权重.....######'
-            time_u = time.time()
+            if isverbose:
+                print '####更新样本权重.....######'
+                time_u = time.time()
+
             self.update_sample_weight(self.X_ci,self.X_cj)
-            print '耗时={0}'.format(time.time() - time_u)
 
-            if iter!=0 and iter%2 == 0:
-                Z=self.getZ()
-                auc = predic_auc(np.zeros(Z.shape[0]), Z)
-                print "auc:", auc
+            if isverbose:
+                print '耗时={0}'.format(time.time() - time_u)
 
-            print 'len(W)={0}'.format(len(self.mat_weight_list))
-            print self.mat_weight_list
-            print '总共耗时={0} s'.format(time.time()-start)
+            # if iter!=0 and iter%2 == 0:
+            #     # Z=self.getZ()
+            #     print 'predicting auc....'
+            #     auc = predic_auc_with_eigenvec(self.linear_weight, quadratic_solver=self)
+            #     print "auc:", auc
+
+            if isverbose:
+                print 'len(W)={0}'.format(len(self.mat_weight_list))
+                print self.mat_weight_list
+                print '总共耗时={0} s'.format(time.time()-start)
 
     # def fit(self):
 
