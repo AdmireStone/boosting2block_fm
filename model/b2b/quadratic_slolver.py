@@ -42,6 +42,8 @@ class Quadratic_Solver(object):
         """
         if P is None:
             P = self.eigenvec_list
+
+        if lams is None:
             lams = np.array(self.mat_weight_list)
 
         if not len(lams):
@@ -51,18 +53,37 @@ class Quadratic_Solver(object):
         K_cj = polynomial_kernel(X_cj, np.array(P), degree=2, gamma=1, coef0=0)
         return (np.dot(K_ci-K_cj, lams.T)).ravel()
 
+    def lamda_loss(self, batch_X_ci, batch_X_cj,P=None, lams=None):
+
+        if P is None:
+            P = self.eigenvec_list
+
+        if lams is None:
+            lams = np.array(self.mat_weight_list)
+
+        prediction_quadratic = self.predict_quadratic(batch_X_ci,batch_X_cj,P=P,lams=lams)
+
+        quadratic_exp_loss   = np.exp(-prediction_quadratic)
+        linear_exp_loss =  self.calutlate_linear_exp_loss(P=batch_X_ci,Q=batch_X_cj)
+
+        temp_rst = np.log(1+np.multiply(quadratic_exp_loss,linear_exp_loss))
+        rst = np.sum(temp_rst)+ self.reg_v
+        return rst
 
 
-    def calutlate_linear_exp_loss(self):
+    def calutlate_linear_exp_loss(self,P=None, Q=None):
         '''
 
         :return: exp(-W^TX)
         '''
+        if P is None and Q is None:
+            P = self.X_ci
+            Q = self.X_cj
+
         W = np.array(self.linear_weight)
-        # X_ci, W = check_paired_arrays(self.X_cj, W)
-        self.l_exp_loss = np.exp(-safe_sparse_dot(self.X_ci - self.X_cj, W.T, dense_output=True))
-        self.l_exp_loss = self.l_exp_loss.ravel()
-        # print 'self.l_exp_loss:', type(self.l_exp_loss), self.l_exp_loss.shape
+        l_exp_loss = np.exp(-safe_sparse_dot(P - Q, W.T, dense_output=True))
+        l_exp_loss = l_exp_loss.ravel()
+        return l_exp_loss
 
     def calutlate_redidual_matrix(self):
         '''
@@ -71,11 +92,23 @@ class Quadratic_Solver(object):
         '''
 
         P = self.eigenvec_list
-        lams = self.mat_weight_list
 
         K_ci = polynomial_kernel(self.X_ci, np.array(P), degree=2, gamma=1, coef0=0)
         K_cj = polynomial_kernel(self.X_cj, np.array(P), degree=2, gamma=1, coef0=0)
         self.psi = K_ci - K_cj
+
+
+    def calutlate_redidual_matrix_batch(self,X_p,X_n):
+        '''
+
+        :return:[[(v_c^Tx_r^+)-(v_c^Tx_r^-)]]_m_s, r=1,2,...,m ;c=1,2,...,s
+        '''
+        P = self.eigenvec_list
+        K_ci = polynomial_kernel(X_p, np.array(P), degree=2, gamma=1, coef0=0)
+        K_cj = polynomial_kernel(X_n, np.array(P), degree=2, gamma=1, coef0=0)
+        return K_ci - K_cj
+
+
 
 
 
@@ -182,10 +215,6 @@ class Totally_Corr(Quadratic_Solver):
         self.eigsh_kwargs={'tol':0.001,'maxiter':5000}
         self.linear_weight = linear_weight
 
-
-
-
-
     def init_u(self):
         # datapath_bpr = data_path.ml_100k
         datapath_bpr = '/home/zju/dgl/source/project/boosting2block_fm/data/data_set/ml-100k/'
@@ -199,7 +228,6 @@ class Totally_Corr(Quadratic_Solver):
 
     def update_mat_weight(self):
         '''
-
         <H,W>
         current_j 1-index
         :param H:
@@ -219,8 +247,12 @@ class Totally_Corr(Quadratic_Solver):
         np.random.shuffle(idx)
         diorder_X_ci=self.X_ci[idx]
         diorder_X_cj = self.X_cj[idx]
-
+        self.l_exp_loss = self.calutlate_linear_exp_loss(P=diorder_X_ci,Q=diorder_X_cj)
+        old_loss=0.0
         for epoc in range(self.w_epoc):
+
+            p_start = 0
+            p_end = self.batch_size
             while p_start < total_samples:
                 if p_end > total_samples:
                     p_end = total_samples
@@ -233,7 +265,7 @@ class Totally_Corr(Quadratic_Solver):
                 # epsilon^-1
                 batch_l_exp_loss_1=1./batch_l_exp_loss
 
-                batch_psi = self.psi[p_start:p_end]
+                batch_psi = self.calutlate_redidual_matrix_batch(batch_P,batch_Q)
 
                 lams = np.array(self.mat_weight_list)
                 temp_qudratic=np.dot(batch_psi,lams.T)
@@ -251,26 +283,28 @@ class Totally_Corr(Quadratic_Solver):
                 p_start = p_end
                 p_end = p_end + self.batch_size
 
+            loss = self.lamda_loss(self.X_ci,self.X_cj)
+            if np.abs(old_loss-loss) < 0.0001:
+                print 'total epoc',epoc,
+                break
+            old_loss = loss
+            # print 'epoc={0},loss={1},lams={2}'.format(epoc,loss,self.mat_weight_list[0])
+
     def update_sample_weight(self,P,Q):
 
         quadratic = self.predict_quadratic(self.X_ci,self.X_cj)
 
         reciprocal = 1./self.l_exp_loss
         self.sample_weight = 1./(1 + np.multiply(reciprocal,np.exp(quadratic)))
+        print 'sample_weight info, sum={0},mean={1},min={2},max={3}'.format(np.sum(self.sample_weight),
+                                                                            np.mean(self.sample_weight),
+                                                                            np.min(self.sample_weight),
+                                                                            np.max(self.sample_weight))
 
-    def getZ(self):
-        Z=None
-        for j in range(self.current_j):
-            w = self.mat_weight_list[j]
-            if Z is None:
-                Z=w*self.z_list[j]
-            else:
-                Z+=w*self.z_list[j]
-            # j+=1
-        return Z
+        self.sample_weight = (self.sample_weight/np.sum(self.sample_weight))*self.X_ci.shape[0]
 
     def fit(self,isverbose=False):
-        self.calutlate_linear_exp_loss()
+        # self.calutlate_linear_exp_loss()
         for iter in range(self.maxiters):
             # 注意这里的sample_weight 每次要不要放大，第一次必须放大
             start=time.time()
@@ -302,6 +336,7 @@ class Totally_Corr(Quadratic_Solver):
             self.update_mat_weight()
 
             if isverbose:
+                print '模型权重', self.mat_weight_list
                 print '耗时={0}'.format(time.time()-time_u)
 
 
@@ -315,12 +350,13 @@ class Totally_Corr(Quadratic_Solver):
                 print '####更新样本权重.....######'
                 time_u = time.time()
 
+            self.l_exp_loss = self.calutlate_linear_exp_loss()
             self.update_sample_weight(self.X_ci,self.X_cj)
 
             if isverbose:
                 print '耗时={0}'.format(time.time() - time_u)
 
-            if iter!=0 and iter%10 == 0:
+            if iter%2 == 0:
                 print 'predicting auc....'
                 auc = predic_auc_with_eigenvec(self.linear_weight, quadratic_solver=self)
                 print "auc:", auc
@@ -329,8 +365,9 @@ class Totally_Corr(Quadratic_Solver):
                 print 'len(W)={0}'.format(len(self.mat_weight_list))
                 print self.mat_weight_list
                 print '总共耗时={0} s'.format(time.time()-start)
+                loss = self.lamda_loss(self.X_ci,self.X_cj)
+                print  'iter={0},loss={1}'.format(iter,loss)
 
-    # def fit(self):
 
 
 

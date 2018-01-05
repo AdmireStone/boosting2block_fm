@@ -8,7 +8,7 @@ if not '/home/zju/dgl/source/project/boosting2block_fm/utils/' in sys.path:
 from utils import data_path
 from quadratic_slolver import  *
 from linear_solver import  *
-
+import datetime
 from  eval.auc import *
 
 
@@ -25,7 +25,7 @@ class Algorithm(object):
     def set_args(self):
 
         # 两区块，迭代次数
-        self.total_iters = 10
+        self.total_iters = 1
 
         # 控制二次项迭代次数，基模型的个数
         self.maxiters_2 = 5
@@ -33,17 +33,30 @@ class Algorithm(object):
         self.reg_V = 10
         self.reg_linear = 0.002
 
-        self.w_eta = 0.001
-        self.w_epoc = 20
+        self.weight_eta = 0.001
+        self.weight_epoc = 20
         self.batch_size_2 = 100 #求二次项权重时候，SGD要用
 
         self.batch_size_linear = 100 # 线性项
-        self.linear_eat = 0.00001
+        self.linear_eat = 0.001
         self.linear_epoc = 10
 
-    def reset_quadratic_args(self,reg_v,componets):
-        self.reg_V = reg_v
-        self.maxiters_2 = componets
+    def reset_quadratic_args(self,reg_v=None,componets=None,linear_eat=None,weight_eta=None,weight_epoc=None):
+        if reg_v != None:
+            self.reg_V = reg_v
+
+        if componets != self.maxiters_2:
+            self.maxiters_2 = componets
+
+        if linear_eat!=None:
+            self.linear_eat = linear_eat
+
+        if weight_eta!=None:
+            self.weight_eta = weight_eta
+
+        if weight_epoc is not None:
+            self.weight_epoc = weight_epoc
+
 
     def load_data_file(self,train_data_file):
         '''
@@ -56,8 +69,6 @@ class Algorithm(object):
         X_ci = sp.csr_matrix(X_ci)
         X_cj = sp.csr_matrix(X_cj)
         return X_ci, X_cj
-
-
 
 
     def only_qudratic(self):
@@ -125,7 +136,7 @@ class Algorithm(object):
         return  np.sum(predicts<0.)*1./len(predicts)
 
 
-    def two_block_algortihm(self,isfit_linear=True):
+    def two_block_algortihm(self,isfit_linear=True,verbose=False):
         '''
         :return:
         '''
@@ -144,9 +155,9 @@ class Algorithm(object):
                 linear_weight = ls.fit()
 
 
-            qs = Totally_Corr(self.maxiters_2,self.reg_V,self.w_eta,self.w_epoc,self.X_ci,self.X_cj,
+            qs = Totally_Corr(self.maxiters_2,self.reg_V,self.weight_eta,self.weight_epoc,self.X_ci,self.X_cj,
                                           self.batch_size_2,linear_weight.ravel())
-            qs.fit()
+            qs.fit(isverbose=verbose)
 
             quadratic_predicts = qs.predict_quadratic(self.X_ci,self.X_cj)
             # Z = qs.getZ()
@@ -171,17 +182,34 @@ if __name__=='__main__':
     #         alg.reset_quadratic_args(reg_v,componets)
     #         alg.two_block_algortihm(isfit_linear=True)
 
+    # 寻找步长最佳
+    # for eta in [0.001,1,0.1,0.01,0.001,0.0001]:
+    #     print 'time:',time.localtime(time.time())
+    #     alg = Algorithm('from_synthetic_data_csv.pkl')
+    #     alg.set_args()
+    #     alg.reset_quadratic_args(reg_v=0.001, componets=80,weight_eta =0.01,weight_epoc=20)
+    #     print '********************eta={0},reg_v={1}**************'.format(eta,)
+    #     alg.two_block_algortihm(isfit_linear=False, verbose=True)
+    #
+    # 寻找步长reg_v
+    for reg_v in [0.1,0.05,0.01,0.005,0.003,0.001,0.0001]:
+        print 'time:',time.localtime(time.time())
+        alg = Algorithm('from_synthetic_data_csv.pkl')
+        alg.set_args()
+        alg.reset_quadratic_args(reg_v=reg_v, componets=15 ,weight_eta =0.01,weight_epoc=20)
+        print '********************reg_v={0}**************'.format(reg_v)
+        alg.two_block_algortihm(isfit_linear=False, verbose=True)
 
 
-    for reg_v in [0.0006,0.0003,0.0001]:
-        cmp_args_list = [2, 4, 6, 8, 10, 15, 20, 25, 30, 35, 40, 50]
-        cmp_args_list.reverse()
-        for componets in cmp_args_list:
-            print '********************reg_v={0},rank={1}**************'.format(reg_v,componets)
-            alg = Algorithm('from_synthetic_data_csv.pkl')
-            alg.set_args()
-            alg.reset_quadratic_args(reg_v,componets)
-            alg.two_block_algortihm(isfit_linear=False)
+
+    # for reg_v in [0.0006,0.0003,0.0001]:
+    #     cmp_args_list = [2, 4, 6, 8, 10, 15, 20, 25, 30, 35, 40, 50]
+    #     cmp_args_list.reverse()
+    #     for componets in cmp_args_list:
+    #         print '********************reg_v={0},rank={1}**************'.format(reg_v,componets)
+
+
+
 
 
     # def load_data_file(train_data_file):
